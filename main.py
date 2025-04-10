@@ -6,7 +6,6 @@ from cryptography.fernet import Fernet
 import base64
 
 def load_verification_token():
-    """Load the verification token to check master password validity."""
     try:
         with open("verification_token.txt", "r") as f:
             return f.read()
@@ -14,7 +13,6 @@ def load_verification_token():
         return None
 
 def save_verification_token(token):
-    """Save the verification token for future master password verification."""
     with open("verification_token.txt", "w") as f:
         f.write(token)
 
@@ -48,16 +46,17 @@ else:
                 cipher = Fernet(cipher_key)
                 try:
                     decrypted = cipher.decrypt(verification_token.encode()).decode()
-                    if decrypted == "MASTER_PASSWORD_VERIFICATION":
-                        st.session_state.cipher_key = cipher_key
-                        st.session_state.cipher = cipher
-                        st.session_state.master_password_hash = hashlib.sha256(master_password.encode()).hexdigest()
-                        st.success("✅ Logged in successfully!")
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error("❌ Incorrect master password!")
                 except:
+                    decrypted = ''
+                    
+                if decrypted == "MASTER_PASSWORD_VERIFICATION":
+                    st.session_state.cipher_key = cipher_key
+                    st.session_state.cipher = cipher
+                    st.session_state.master_password_hash = hashlib.sha256(master_password.encode()).hexdigest()
+                    st.success("✅ Logged in successfully!")
+                    time.sleep(1)
+                    st.rerun()
+                else:
                     st.error("❌ Incorrect master password!")
             else:
                 st.error("⚠️ Please enter the password.")
@@ -70,36 +69,31 @@ else:
             st.session_state.last_failed_time = 0
 
         def hash_passkey(passkey):
-            """Hash the passkey using SHA-256 for secure storage."""
             return hashlib.sha256(passkey.encode()).hexdigest()
 
         def encrypt_data(text):
-            """Encrypt the provided text using the session cipher."""
             return st.session_state.cipher.encrypt(text.encode()).decode()
 
         def decrypt_data(encrypted_text, passkey):
-            """Decrypt data if the passkey is correct; manage failed attempts."""
             hashed_passkey = hash_passkey(passkey)
             entry = st.session_state.stored_data.get(encrypted_text)
             if entry and entry["passkey"] == hashed_passkey:
                 st.session_state.failed_attempts = 0
                 return st.session_state.cipher.decrypt(encrypted_text.encode()).decode()
-            else:
-                if st.session_state.failed_attempts < 3:
-                    st.session_state.failed_attempts += 1
-                    if st.session_state.failed_attempts == 3:
-                        st.session_state.last_failed_time = time.time()
-                return None
+            
+            if st.session_state.failed_attempts < 3:
+                st.session_state.failed_attempts += 1
+                if st.session_state.failed_attempts == 3:
+                    st.session_state.last_failed_time = time.time()
+            return None
 
         def is_locked_out():
-            """Check if the user is locked out based on failed attempts and time."""
             if st.session_state.failed_attempts >= 3:
                 if time.time() - st.session_state.last_failed_time < 30:
                     return True
             return False
 
         def save_data_to_file():
-            """Save stored data to a JSON file."""
             try:
                 with open("encrypted_data.json", "w") as f:
                     json.dump(st.session_state.stored_data, f)
@@ -109,7 +103,6 @@ else:
                 return False
 
         def load_data_from_file():
-            """Load stored data from a JSON file."""
             try:
                 with open("encrypted_data.json", "r") as f:
                     st.session_state.stored_data = json.load(f)
@@ -123,9 +116,9 @@ else:
         load_data_from_file()
 
         st.title("🔒 Secure Data Encryption System")
-        menu = ["Home", "Store Data", "Retrieve Data", "Login"]
+        menu = ["Home", "Store Data", "Retrieve Data"]
         choice = st.sidebar.selectbox("Navigation", menu)
-
+        
         if is_locked_out() and choice != "Login":
             st.warning("🔒 You are locked out due to too many failed attempts. Please reauthorize.")
             choice = "Login"
@@ -208,7 +201,7 @@ else:
                     else:
                         st.error("⚠️ Both encrypted data and passkey are required!")
 
-        elif choice == "Login":
+        elif choice == "Login" and st.session_state.failed_attempts >= 3:
             st.subheader("🔑 Reauthorization Required")
             st.write("Reauthorize to continue after too many failed attempts.")
             login_pass = st.text_input("Enter Master Password:", type="password")
@@ -216,7 +209,7 @@ else:
                 if hashlib.sha256(login_pass.encode()).hexdigest() == st.session_state.master_password_hash:
                     st.session_state.failed_attempts = 0
                     st.success("✅ Reauthorized successfully!")
-                    st.info("Redirecting to Home page...")
+                    st.info("Logging In Again...")
                     time.sleep(1)
                     st.rerun()
                 else:
@@ -227,11 +220,8 @@ else:
         st.sidebar.write(f"📊 Stored data items: {len(st.session_state.stored_data)}")
         st.sidebar.write(f"🔑 Failed attempts: {st.session_state.failed_attempts}/3")
         st.sidebar.write("🔒 Status: Locked" if is_locked_out() else "🔓 Status: Unlocked")
-
-        if st.sidebar.button("Reset Session"):
-            for key in list(st.session_state.keys()):
-                if key not in ['cipher_key', 'cipher', 'master_password_hash']:
-                    del st.session_state[key]
-            st.session_state.stored_data = {}
-            st.session_state.failed_attempts = 0
+        
+        if st.sidebar.button("Logout"):
+            for key in st.session_state.keys():
+                del st.session_state[key]
             st.rerun()
